@@ -1,0 +1,118 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../lib/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id            String    @id @default(cuid())
+  name          String?
+  email         String?   @unique
+  password      String?
+  createdAt     DateTime  @default(now())
+  emailVerified DateTime?
+  image         String?
+  updatedAt     DateTime  @updatedAt
+  lastLogin     DateTime?
+  accounts      Account[]
+  sessions      Session[]
+
+  // relations
+  resources        Resource[]        @relation("UserResources")
+  uploadedVersions ResourceVersion[] @relation("UserUploadedVersions")
+
+  // new: downloads made by this user (nullable userId allowed on Download)
+  downloads Download[] @relation("UserDownloads")
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String?
+  access_token      String?
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String?
+  session_state     String?
+  user              User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+model Resource {
+  id           String            @id @default(cuid())
+  title        String
+  description  String?
+  courseId     String? // optional link to a Course (add Course model later if needed)
+  uploaderId   String
+  uploader     User              @relation("UserResources", fields: [uploaderId], references: [id], onDelete: Cascade)
+  currentVerId String? // points to latest ResourceVersion.id (optional)
+  versions     ResourceVersion[] @relation("ResourceVersions")
+  downloads    Int               @default(0) // counter
+  createdAt    DateTime          @default(now())
+  updatedAt    DateTime          @updatedAt
+
+  // new: relation for download records
+  downloadRecords Download[] @relation("ResourceDownloads")
+
+  @@index([courseId])
+  @@index([uploaderId])
+}
+
+model Download {
+  id         String   @id @default(cuid())
+  resourceId String
+  resource   Resource @relation("ResourceDownloads", fields: [resourceId], references: [id], onDelete: Cascade)
+
+  userId String? // null if anonymous
+  user   User?   @relation("UserDownloads", fields: [userId], references: [id], onDelete: Cascade)
+
+  ip        String?
+  userAgent String?
+  createdAt DateTime @default(now())
+
+  @@index([resourceId])
+  @@index([userId])
+}
+
+model ResourceVersion {
+  id         String   @id @default(cuid())
+  resourceId String
+  resource   Resource @relation("ResourceVersions", fields: [resourceId], references: [id], onDelete: Cascade)
+  filePath   String // path in storage (e.g. "resources/<resourceId>/v1/filename.pdf")
+  fileName   String
+  mimeType   String
+  size       Int
+  uploaderId String
+  // name the relation "UserUploadedVersions" to match User.uploadedVersions
+  uploader   User     @relation("UserUploadedVersions", fields: [uploaderId], references: [id], onDelete: Cascade)
+  version    Int
+  createdAt  DateTime @default(now())
+
+  @@index([resourceId])
+  @@index([uploaderId])
+}
